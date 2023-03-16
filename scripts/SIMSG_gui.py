@@ -98,12 +98,20 @@ objs = sorted(vocab['object_idx_to_name'])
 
 checkpoint = None
 
+def remove_vgg(model_state):
+    def filt(pair):
+        key, val = pair
+        return "high_level_feat" not in key
+
+    return dict(filter(filt, model_state.items()))
+
 def build_model():
     global checkpoint
     checkpoint = torch.load(args.checkpoint, map_location=torch.device('cpu'))
 
     model = SIMSGModel(**checkpoint['model_kwargs'])
-    model.load_state_dict(checkpoint['model_state'])
+    new_state = remove_vgg(checkpoint['model_state'])
+    model.load_state_dict(new_state, strict=False)
     model.eval()
     model.image_size = args.image_size
 #   model.cuda()
