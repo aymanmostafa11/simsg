@@ -14,7 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -34,6 +34,8 @@ from sklearn.decomposition import PCA
 
 import torch.distributions as tdist
 from simsg.feats_statistics import get_mean, get_std
+
+FEAT_NET = ["vgg", "resnet18", "resnet34", "resnet50"]
 
 
 class SIMSGModel(nn.Module):
@@ -142,7 +144,7 @@ class SIMSGModel(nn.Module):
             )
 
         if not (self.is_baseline or self.is_supervised):
-            self.high_level_feats = self.build_obj_feats_net()
+            self.high_level_feats = self.build_obj_feats_net("resnet50")
             # freeze vgg
             for param in self.high_level_feats.parameters():
                 param.requires_grad = False
@@ -160,13 +162,24 @@ class SIMSGModel(nn.Module):
         self.p = 0.25
         self.p_box = 0.35
 
-    def build_obj_feats_net(self):
-        # get VGG16 features for each object RoI
-        #vgg_net = T.models.vgg16(pretrained=True)
-        #layers = list(vgg_net.features._modules.values())[:-1]
-        res_net = T.models.resnet50(pretrained=True)
-        res_net.fc = nn.Linear(2048, 512)
-        img_feats = res_net
+    def build_obj_feats_net(self, type="resnet50"):
+        assert type in FEAT_NET, f"Available types: {FEAT_NET}"
+        # get CNN features for each object RoI
+        if type == "vgg":
+            feat_net = T.models.vgg16(pretrained=True)
+            layers = list(feat_net.features._modules.values())[:-1]
+            feat_net = nn.Sequential(*layers)
+        elif type == "resnet18":
+            feat_net = T.models.resnet18(pretrained=True)
+            feat_net.fc = nn.Identity()
+        elif type == "resnet34":
+            feat_net = T.models.resnet34(pretrained=True)
+            feat_net.fc = nn.Identity()
+        elif type == "resnet50":
+            feat_net = T.models.resnet50(pretrained=True)
+            feat_net.fc = nn.Linear(2048, 512)
+
+        img_feats = feat_net
 
         return img_feats
 
@@ -244,8 +257,10 @@ class SIMSGModel(nn.Module):
             boxes_prior = boxes_gt * box_keep
 
             obj_crop = get_cropped_objs(in_image, boxes_gt, obj_to_img, feats_keep, box_keep, evaluating, mode)
-
+            # start = time.time()
             high_feats = self.high_level_feats(obj_crop)
+            # finish = time.time()
+            # print(f"ResNet50 time: {finish - start}")
 
             high_feats = high_feats.view(high_feats.size(0), -1)
             high_feats = self.high_level_feats_fc(high_feats)
