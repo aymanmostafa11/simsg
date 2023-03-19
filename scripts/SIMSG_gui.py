@@ -45,6 +45,8 @@ import scripts.eval_utils as eval_utils
 
 from matplotlib.backends.qt_compat import QtCore, QtWidgets, is_pyqt5, QtGui
 
+from PIL import Image
+
 if is_pyqt5():
     from matplotlib.backends.backend_qt5agg import (
         FigureCanvas)
@@ -131,8 +133,8 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         self.imCounter = 0
         self.imLoadCounter = 0
         self.graphCounter = 0
-        self.model = build_model()
-        self.data_loader = iter(build_eval_loader(args, checkpoint, no_gt=True))
+ #       self.model = build_model()
+#        self.data_loader = iter(build_eval_loader(args, checkpoint, no_gt=True))
         self.mode = "auto_withfeats"
         self.new_objs = None
         self.new_triples = None
@@ -712,12 +714,28 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         """
         Loads input data
         """
-        self.batch = next(self.data_loader)
+        #self.batch = next(self.data_loader)
 
         # self.imgs, self.objs, self.boxes, self.triples, self.obj_to_img, self.triple_to_img, self.imgs_in = \
         #     [x.cuda() for x in self.batch]
-        self.imgs, self.objs, self.boxes, self.triples, self.obj_to_img, self.triple_to_img, self.imgs_in = \
-                [x for x in self.batch]
+        # self.imgs, self.objs, self.boxes, self.triples, self.obj_to_img, self.triple_to_img, self.imgs_in = \
+        #         [x for x in self.batch]
+
+        load_image = Image.open("./tmp/rmdn.jpg")
+        arr = np.expand_dims(np.array(load_image.resize((64,64)), dtype=np.uint8).transpose((2, 0, 1)), axis=0)
+
+        pred = json.load(open('./tmp/custom_prediction.json', 'r'))['0']
+
+        objs = pred['bbox_labels'][:4]
+        boxes = pred['bbox'][:4]
+        triples = [(pred['rel_pairs'][i][0], pred['rel_labels'][i], pred['rel_pairs'][i][1]) for i in range(4)]
+
+        self.imgs = torch.tensor(arr).cpu()
+        self.objs = torch.tensor(objs).cpu()
+        self.boxes = torch.tensor(boxes).cpu()
+        self.triples = torch.tensor(triples).cpu()
+
+
 
         self.keep_box_idx = torch.ones_like(self.objs.unsqueeze(1), dtype=torch.float)
         self.keep_feat_idx = torch.ones_like(self.objs.unsqueeze(1), dtype=torch.float)
@@ -727,8 +745,8 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         self.new_triples, self.new_objs = None, None
 
-        image = imagenet_deprocess_batch(self.imgs)
-        image = image[0].numpy().transpose(1, 2, 0).copy()
+        #image = imagenet_deprocess_batch(self.imgs)  # put image in range 0-255 instead of 0-1
+        image = self.imgs[0].numpy().transpose(1, 2, 0).copy()  # change order to (w, h, c)
 
         self.image = image
         self.draw_input_image(new_image=True)
@@ -804,6 +822,15 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         boxes = self.boxes.cpu().numpy()
         boxes_ = {}
         triple_idx = 0
+
+        vocab = json.load(open("./tmp/custom_data_info.json", 'r'))
+        vocab['object_idx_to_name'] = vocab['ind_to_classes']
+        del vocab['ind_to_classes']
+
+        vocab['pred_idx_to_name'] = vocab['ind_to_predicates']
+        del vocab['ind_to_predicates']
+
+
         for [s, p, o] in triples:
             s2 = vocab['object_idx_to_name'][objs[s]] + "." + str(s)
             o2 = vocab['object_idx_to_name'][objs[o]] + "." + str(o)
