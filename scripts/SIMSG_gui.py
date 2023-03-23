@@ -692,13 +692,13 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         if idx1 is not None and idx2 is None:
             # its an object node
-            image = eval_utils.draw_image_box(image, self.boxes[idx1].cpu().numpy())
+            image = eval_utils.draw_image_box(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy() / 720)
 
         if idx1 is not None and idx2 is not None:
             # its a predicate node
-            image = eval_utils.draw_image_edge(image, self.boxes[idx1].cpu().numpy(), self.boxes[idx2].cpu().numpy())
-            image = eval_utils.draw_image_box(image, self.boxes[idx1].cpu().numpy())
-            image = eval_utils.draw_image_box(image, self.boxes[idx2].cpu().numpy())
+            image = eval_utils.draw_image_edge(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy(), self.boxes[idx2].cpu().numpy())
+            image = eval_utils.draw_image_box(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy())
+            image = eval_utils.draw_image_box(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy())
 
         image = QtGui.QImage(image, image.shape[1], \
                              image.shape[0], QtGui.QImage.Format_RGB888)
@@ -726,9 +726,20 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         pred = json.load(open('./tmp/custom_prediction.json', 'r'))['0']
 
-        objs = pred['bbox_labels'][:4]
-        boxes = pred['bbox'][:4]
-        triples = [(pred['rel_pairs'][i][0], pred['rel_labels'][i], pred['rel_pairs'][i][1]) for i in range(4)]
+        filtered_pairs = []
+        rel_labels = []
+        for i,pair in enumerate(pred['rel_pairs']) :
+            if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels']:
+                filtered_pairs.append(pair)
+                rel_labels.append(pred['rel_labels'][i])
+        #filtered_pairs = [(pair[0], pred['rel_labels'][i], pair[1]) for i,pair in enumerate(pred['rel_pairs']) if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels']]
+        objs = [item for pair in filtered_pairs[:4] for item in pair]
+        boxes = [pred['bbox'][pred['bbox_labels'].index(obj)] for obj in objs]
+        triples = [(filtered_pairs[i][0], rel_labels[i], filtered_pairs[i][1]) for i in range(4)]
+
+        #objs = pred['bbox_labels'][1:5]
+        #boxes = pred['bbox'][1:5]
+        #triples = [(pred['rel_pairs'][i][0], pred['rel_labels'][i], pred['rel_pairs'][i][1]) for i in range(4)]
 
         self.imgs = torch.tensor(arr).cpu()
         self.objs = torch.tensor(objs).cpu()
@@ -831,14 +842,14 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         del vocab['ind_to_predicates']
 
 
-        for [s, p, o] in triples:
-            s2 = vocab['object_idx_to_name'][objs[s]] + "." + str(s)
-            o2 = vocab['object_idx_to_name'][objs[o]] + "." + str(o)
+        for i, [s, p, o] in enumerate(triples):
+            s2 = vocab['object_idx_to_name'][s] + "." + str(s)
+            o2 = vocab['object_idx_to_name'][o] + "." + str(o)
             p2 = vocab['pred_idx_to_name'][p] + "." + str(triple_idx)
             new_triples.append([s2, p2, o2])
 
-            x1_o, y1_o, x2_o, y2_o = boxes[o]
-            x1_s, y1_s, x2_s, y2_s = boxes[s]
+            x1_o, y1_o, x2_o, y2_o = boxes[np.where(objs == o)[0]].T
+            x1_s, y1_s, x2_s, y2_s = boxes[np.where(objs == s)[0]].T
             xc_o = x1_o + (x2_o - x1_o) / 2
             yc_o = y1_o + (y2_o - y1_o) / 2
             xc_s = x1_s + (x2_s - x1_s) / 2
