@@ -67,7 +67,7 @@ parser.add_argument('--data_h5', default=None)
 parser.add_argument('--predgraphs', default=False, type=bool_flag)
 parser.add_argument('--image_size', default=(64, 64), type=int_tuple)
 parser.add_argument('--num_samples', default=10000, type=int)
-parser.add_argument('--update_input', default=True, type=bool_flag)
+parser.add_argument('--update_input', default=False, type=bool_flag)
 parser.add_argument('--shuffle', default=True, type=bool_flag)
 parser.add_argument('--loader_num_workers', default=1, type=int)
 # deterministic vs diverse results
@@ -99,6 +99,8 @@ preds = sorted(vocab['pred_idx_to_name'])
 objs = sorted(vocab['object_idx_to_name'])
 
 checkpoint = None
+
+
 
 def remove_vgg(model_state):
     def filt(pair):
@@ -133,7 +135,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         self.imCounter = 0
         self.imLoadCounter = 0
         self.graphCounter = 0
- #       self.model = build_model()
+        self.model = build_model()
 #        self.data_loader = iter(build_eval_loader(args, checkpoint, no_gt=True))
         self.mode = "auto_withfeats"
         self.new_objs = None
@@ -692,7 +694,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         if idx1 is not None and idx2 is None:
             # its an object node
-            image = eval_utils.draw_image_box(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy() / 720)
+            image = eval_utils.draw_image_box(image, self.boxes[idx1].cpu().numpy() / 720)
 
         if idx1 is not None and idx2 is not None:
             # its a predicate node
@@ -724,18 +726,22 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         load_image = Image.open("./tmp/rmdn.jpg")
         arr = np.expand_dims(np.array(load_image.resize((64,64)), dtype=np.uint8).transpose((2, 0, 1)), axis=0)
 
+        # img_arr = np.array(load_image.resize((64, 64)), dtype=np.uint8)
+        # img_arr = np.append(img_arr, np.zeros([img_arr.shape[0], img_arr.shape[1], 1]), axis=2)
+        # arr = np.expand_dims(img_arr.transpose((2, 0, 1)), axis=0)
+
         pred = json.load(open('./tmp/custom_prediction.json', 'r'))['0']
 
         filtered_pairs = []
         rel_labels = []
         for i,pair in enumerate(pred['rel_pairs']) :
-            if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels']:
+            if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels'] and pred['rel_labels'][i] < 46:
                 filtered_pairs.append(pair)
                 rel_labels.append(pred['rel_labels'][i])
         #filtered_pairs = [(pair[0], pred['rel_labels'][i], pair[1]) for i,pair in enumerate(pred['rel_pairs']) if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels']]
         objs = [item for pair in filtered_pairs[:4] for item in pair]
         boxes = [pred['bbox'][pred['bbox_labels'].index(obj)] for obj in objs]
-        triples = [(filtered_pairs[i][0], rel_labels[i], filtered_pairs[i][1]) for i in range(4)]
+        triples = [(objs.index(filtered_pairs[i][0]), rel_labels[i], objs.index(filtered_pairs[i][1])) for i in range(4)]
 
         #objs = pred['bbox_labels'][1:5]
         #boxes = pred['bbox'][1:5]
@@ -760,6 +766,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         image = self.imgs[0].numpy().transpose(1, 2, 0).copy()  # change order to (w, h, c)
 
         self.image = image
+        self.imgs_in = torch.tensor(np.append(arr,np.zeros([1,1 , arr.shape[-1], arr.shape[-2]]), axis=1), dtype=torch.float).cpu()
         self.draw_input_image(new_image=True)
 
 
@@ -843,13 +850,18 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
 
         for i, [s, p, o] in enumerate(triples):
-            s2 = vocab['object_idx_to_name'][s] + "." + str(s)
-            o2 = vocab['object_idx_to_name'][o] + "." + str(o)
+            s2 = vocab['object_idx_to_name'][objs[s]] + "." + str(s)
+            o2 = vocab['object_idx_to_name'][objs[o]] + "." + str(o)
+
+            # s2 = vocab['object_idx_to_name'][s] + "." + str(s)
+            # o2 = vocab['object_idx_to_name'][o] + "." + str(o)
             p2 = vocab['pred_idx_to_name'][p] + "." + str(triple_idx)
             new_triples.append([s2, p2, o2])
 
-            x1_o, y1_o, x2_o, y2_o = boxes[np.where(objs == o)[0]].T
-            x1_s, y1_s, x2_s, y2_s = boxes[np.where(objs == s)[0]].T
+            x1_o, y1_o, x2_o, y2_o = boxes[o]
+            x1_s, y1_s, x2_s, y2_s = boxes[s]
+            # x1_o, y1_o, x2_o, y2_o = boxes[np.where(objs == o)[0]].T
+            # x1_s, y1_s, x2_s, y2_s = boxes[np.where(objs == s)[0]].T
             xc_o = x1_o + (x2_o - x1_o) / 2
             yc_o = y1_o + (y2_o - y1_o) / 2
             xc_s = x1_s + (x2_s - x1_s) / 2

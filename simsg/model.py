@@ -554,7 +554,7 @@ def get_cropped_objs(imgs, boxes, obj_to_img, feats_keeps, boxes_keeps, evaluati
                     (boxes_keeps[i, 0] == 0 and evaluating):
 
                 left, right, top, bottom = \
-                    get_left_right_top_bottom(boxes[i], imgs.size(2), imgs.size(3))
+                    get_left_right_top_bottom(boxes[i] / 720, imgs.size(2), imgs.size(3))
                 features_mask[obj_to_img[i], :, top:bottom, left:right] = 1
 
         # put gray as a mask over the image when things are dropped
