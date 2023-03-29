@@ -63,7 +63,7 @@ parser.add_argument('--checkpoint', default='./experiments/vg/spade_64_vg_model.
 parser.add_argument('--dataset', default='vg', choices=['clevr', 'vg'])
 parser.add_argument('--data_h5', default=None)
 parser.add_argument('--predgraphs', default=False, type=bool_flag)
-parser.add_argument('--image_size', default=(64, 64), type=int_tuple)
+parser.add_argument('--image_size', default=(128, 128), type=int_tuple)
 parser.add_argument('--num_samples', default=10000, type=int)
 parser.add_argument('--update_input', default=True, type=bool_flag)
 parser.add_argument('--shuffle', default=True, type=bool_flag)
@@ -97,6 +97,8 @@ preds = sorted(vocab['pred_idx_to_name'])
 objs = sorted(vocab['object_idx_to_name'])
 
 checkpoint = None
+
+IMG_DISPLAY_SIZE = 400
 
 def remove_vgg(model_state):
     def filt(pair):
@@ -159,7 +161,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         self.imb = QtWidgets.QLabel("Source Image")
         self.imb.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(self.imb,0,1,4,2)
+        layout.addWidget(self.imb, 0, 1, 4, 2)
 
         self.ima = QtWidgets.QLabel("Target Image")
         self.ima.setAlignment(QtCore.Qt.AlignCenter)
@@ -509,13 +511,21 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         new_boxes.append(self.boxes[-1])
 
-        # expand and update the keep arrays. Set box and feat to 0 for the new node
-        self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-        self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-        self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-        self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32).cuda()), 0)
-        self.combine_gt_pred_box_idx = torch.cat((self.combine_gt_pred_box_idx,
-                                                  torch.tensor([0], dtype=torch.int64).cuda()), 0)
+        if torch.cuda.is_available():
+            # expand and update the keep arrays. Set box and feat to 0 for the new node
+            self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
+            self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
+            self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
+            self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32).cuda()), 0)
+            self.combine_gt_pred_box_idx = torch.cat((self.combine_gt_pred_box_idx, torch.tensor([0], dtype=torch.int64).cuda()), 0)
+
+        else:
+            self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32)), 0)
+            self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32)), 0)
+            self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32)), 0)
+            self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32)), 0)
+            self.combine_gt_pred_box_idx = torch.cat((self.combine_gt_pred_box_idx, torch.tensor([0], dtype=torch.int64)), 0)
+
         self.keep_feat_idx[-2] = 0
         self.keep_box_idx[-2] = 0
         self.added_objs_idx[-2] = 1
@@ -527,7 +537,10 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                 s = newimgbox_idx
             if o == imgbox_idx:
                 o = newimgbox_idx
-            new_triples.append(torch.LongTensor([s,p,o]).cuda())
+            if torch.cuda.is_available():
+                new_triples.append(torch.LongTensor([s,p,o]).cuda())
+            else:
+                new_triples.append(torch.LongTensor([s, p, o]))
 
         new_pred_pos = len(new_triples)
 
@@ -537,14 +550,22 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         if is_subject:
             subject_tag = new_node_tag
             object_tag = anchor_tag
-            new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]).cuda())
+            if torch.cuda.is_available():
+                new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]).cuda())
+            else:
+                new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]))
         else:
             object_tag = new_node_tag
             subject_tag = anchor_tag
+            if torch.cuda.is_available():
+                new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]).cuda())
+            else:
+                new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]))
 
-            new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]).cuda())
-
-        new_triples.append(torch.LongTensor([imgbox_idx,0,newimgbox_idx]).cuda())
+        if torch.cuda.is_available():
+            new_triples.append(torch.LongTensor([imgbox_idx,0,newimgbox_idx]).cuda())
+        else:
+            new_triples.append(torch.LongTensor([imgbox_idx, 0, newimgbox_idx]))
 
         self.new_triples = torch.stack(new_triples)
         self.triples = self.new_triples
@@ -702,7 +723,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                              image.shape[0], QtGui.QImage.Format_RGB888)
 
         self.pixmap = QtGui.QPixmap(image)
-        self.imb.setPixmap(self.pixmap.scaled(200,200))
+        self.imb.setPixmap(self.pixmap.scaled(IMG_DISPLAY_SIZE, IMG_DISPLAY_SIZE))
 
         if new_image:
             self.ima.setVisible(0)
@@ -770,7 +791,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                              image.shape[0], QtGui.QImage.Format_RGB888)
 
         im_pm = QtGui.QPixmap(image)
-        self.ima.setPixmap(im_pm.scaled(200,200))
+        self.ima.setPixmap(im_pm.scaled(IMG_DISPLAY_SIZE,IMG_DISPLAY_SIZE))
         self.ima.setVisible(1)
         self.imCounter += 1
 
