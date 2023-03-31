@@ -36,6 +36,7 @@ import os, json, argparse
 import numpy as np
 from simsg.model import SIMSGModel
 import torch
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QComboBox, QVBoxLayout, QWidget
 
 from simsg.data import imagenet_deprocess_batch
 from simsg.loader_utils import build_eval_loader
@@ -44,6 +45,7 @@ from simsg.utils import int_tuple, bool_flag
 import scripts.eval_utils as eval_utils
 
 from matplotlib.backends.qt_compat import QtCore, QtWidgets, is_pyqt5, QtGui
+from export import export_graph
 
 if is_pyqt5():
     from matplotlib.backends.backend_qt5agg import (
@@ -118,6 +120,7 @@ def build_model():
     model.image_size = args.image_size
 #   model.cuda()
     return model
+
 
 
 class ApplicationWindow(QtWidgets.QMainWindow):
@@ -240,12 +243,34 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         self.btnRem.resize(self.btnRem.minimumSizeHint())
         layout.addWidget(self.btnRem, 6, 5, 1, 1)
 
+        # Create a QLabel to display the chosen image size
+        self.image_size_label = QLabel(self)
+        self.image_size_label.move(20, 50)
+        layout.addWidget(self.image_size_label, 5, 5, 1, 1)
+
+        # Create a QComboBox with image size options
+        self.image_size_combobox = QComboBox(self)
+        self.image_size_combobox.addItem("64x64")
+        self.image_size_combobox.addItem("128x128")
+        self.image_size_combobox.addItem("256x256")
+        self.image_size_combobox.addItem("512x512")
+        layout.addWidget(self.image_size_combobox, 4, 5, 2, 1)
+
+        # Connect the combobox to a function to update the image size label
+        self.image_size_combobox.currentIndexChanged.connect(self.update_image_size_label)
+
+
+
     def hilighter(self, event):
+        """
+        Highlights node in image (draws bbox) when node is selected in graph.
+        """
+
         # if we did not hit a node, bail
         if not hasattr(event, 'nodes') or not event.nodes:
                 return
 
-        # pull out the graph,
+        # pull out the graph
         graph = event.artist.graph
 
         # clear any non-default color on nodes
@@ -285,6 +310,18 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         event.artist.stale = True
         event.artist.figure.canvas.draw_idle()
 
+    def update_image_size_label(self):
+        # Get the selected image size from the combobox
+        selected_image_size = self.image_size_combobox.currentText()
+        image_size = tuple(map(int, selected_image_size.split('x')))
+        # Set new image size and rebuild model for new image size
+        args.image_size = image_size
+        self.model = build_model()
+        self.data_loader = iter(build_eval_loader(args, checkpoint, no_gt=True))
+
+        # Update the image size label
+        self.image_size_label.setText(f"Selected Image Size: {selected_image_size}")
+
     def reset_graph(self):
         """
         Initializes new networkx graph from the current state of the objects and triples
@@ -315,7 +352,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
             for edge_attribute in self.graph[node].values():
                 edge_attribute['arrows'] = True
-
+        export_graph(self.graph)
         self.set_graph()
         self.graphCounter += 1
 
@@ -505,6 +542,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             new_boxes.append(box)
 
         if torch.cuda.is_available():
+            print('yello')
             new_boxes.append(torch.tensor([0, 0, 0, 0], dtype=torch.float32).cuda())
         else:
             new_boxes.append(torch.tensor([0, 0, 0, 0], dtype=torch.float32))
@@ -877,6 +915,7 @@ def convert_name_to_idx(triple):
         p = vocab["pred_name_to_idx"][triple[i][1]]
         triples.append([s, p, o])
     return triples
+
 
 
 if __name__ == "__main__":
