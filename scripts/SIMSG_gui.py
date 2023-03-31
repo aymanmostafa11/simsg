@@ -56,6 +56,7 @@ else:
 
 from matplotlib.figure import Figure
 import matplotlib as mpl
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 mpl.rcParams['savefig.pad_inches'] = 0
 plt.margins(0.0)
@@ -513,17 +514,13 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         anchor_label, anchor_idx = self.comboBox_obj2.currentText().split(".")
         new_pred = self.comboBox_p2.currentText()
 
-        if torch.cuda.is_available():
-            pred_id = torch.tensor(vocab["pred_name_to_idx"][new_pred]).cuda()
-        else:
-            pred_id = torch.tensor(vocab["pred_name_to_idx"][new_pred])
+        pred_id = torch.tensor(vocab["pred_name_to_idx"][new_pred]).to(device)
+
 
         new_node = self.comboBox_sub2.currentText()
 
-        if torch.cuda.is_available():
-            new_node_idx = torch.tensor(vocab["object_name_to_idx"][new_node]).cuda()
-        else:
-            new_node_idx = torch.tensor(vocab["object_name_to_idx"][new_node])
+        new_node_idx = torch.tensor(vocab["object_name_to_idx"][new_node]).to(device)
+
 
         anchor_idx = int(anchor_idx)
         imgbox_idx = self.objs.shape[0] - 1
@@ -541,28 +538,16 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         for box in self.boxes[:-1]:
             new_boxes.append(box)
 
-        if torch.cuda.is_available():
-            print('yello')
-            new_boxes.append(torch.tensor([0, 0, 0, 0], dtype=torch.float32).cuda())
-        else:
-            new_boxes.append(torch.tensor([0, 0, 0, 0], dtype=torch.float32))
+        new_boxes.append(torch.tensor([0, 0, 0, 0], dtype=torch.float32).to(device))
 
         new_boxes.append(self.boxes[-1])
 
-        if torch.cuda.is_available():
-            # expand and update the keep arrays. Set box and feat to 0 for the new node
-            self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-            self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-            self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-            self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32).cuda()), 0)
-            self.combine_gt_pred_box_idx = torch.cat((self.combine_gt_pred_box_idx, torch.tensor([0], dtype=torch.int64).cuda()), 0)
-
-        else:
-            self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32)), 0)
-            self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32)), 0)
-            self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32)), 0)
-            self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32)), 0)
-            self.combine_gt_pred_box_idx = torch.cat((self.combine_gt_pred_box_idx, torch.tensor([0], dtype=torch.int64)), 0)
+        self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32).to(device)), 0)
+        self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32).to(device)), 0)
+        self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32).to(device)), 0)
+        self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32).to(device)), 0)
+        self.combine_gt_pred_box_idx = torch.cat(
+            (self.combine_gt_pred_box_idx, torch.tensor([0], dtype=torch.int64).to(device)), 0)
 
         self.keep_feat_idx[-2] = 0
         self.keep_box_idx[-2] = 0
@@ -575,10 +560,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
                 s = newimgbox_idx
             if o == imgbox_idx:
                 o = newimgbox_idx
-            if torch.cuda.is_available():
-                new_triples.append(torch.LongTensor([s,p,o]).cuda())
-            else:
-                new_triples.append(torch.LongTensor([s, p, o]))
+            new_triples.append(torch.LongTensor([s, p, o]).to(device))
 
         new_pred_pos = len(new_triples)
 
@@ -588,22 +570,14 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         if is_subject:
             subject_tag = new_node_tag
             object_tag = anchor_tag
-            if torch.cuda.is_available():
-                new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]).cuda())
-            else:
-                new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]))
+            new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]).to(device))
+
         else:
             object_tag = new_node_tag
             subject_tag = anchor_tag
-            if torch.cuda.is_available():
-                new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]).cuda())
-            else:
-                new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]))
+            new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]).to(device))
 
-        if torch.cuda.is_available():
-            new_triples.append(torch.LongTensor([imgbox_idx,0,newimgbox_idx]).cuda())
-        else:
-            new_triples.append(torch.LongTensor([imgbox_idx, 0, newimgbox_idx]))
+        new_triples.append(torch.LongTensor([imgbox_idx, 0, newimgbox_idx]).to(device))
 
         self.new_triples = torch.stack(new_triples)
         self.triples = self.new_triples
