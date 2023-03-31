@@ -169,7 +169,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         self.ima.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.ima, 0, 5, 4, 2)
 
-        self.g_layout = self.static_layout
+        self.g_layout = self.static_layout2
         self.static_canvas = FigureCanvas(Figure(figsize=(4, 8)))
         layout.addWidget(self.static_canvas,1,3,2,2)
 
@@ -698,9 +698,9 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         if idx1 is not None and idx2 is not None:
             # its a predicate node
-            image = eval_utils.draw_image_edge(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy(), self.boxes[idx2].cpu().numpy())
-            image = eval_utils.draw_image_box(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy())
-            image = eval_utils.draw_image_box(image, self.boxes[np.where(self.objs == idx1)[0][0]].cpu().numpy())
+            image = eval_utils.draw_image_edge(image, self.boxes[idx1].cpu().numpy() / 720, self.boxes[idx2].cpu().numpy() / 720)
+            image = eval_utils.draw_image_box(image, self.boxes[idx1].cpu().numpy() / 720)
+            image = eval_utils.draw_image_box(image, self.boxes[idx2].cpu().numpy() / 720)
 
         image = QtGui.QImage(image, image.shape[1], \
                              image.shape[0], QtGui.QImage.Format_RGB888)
@@ -716,36 +716,48 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         """
         Loads input data
         """
-        #self.batch = next(self.data_loader)
+        global vocab
 
-        # self.imgs, self.objs, self.boxes, self.triples, self.obj_to_img, self.triple_to_img, self.imgs_in = \
-        #     [x.cuda() for x in self.batch]
-        # self.imgs, self.objs, self.boxes, self.triples, self.obj_to_img, self.triple_to_img, self.imgs_in = \
-        #         [x for x in self.batch]
-
-        load_image = Image.open("./tmp/rmdn.jpg")
+        available_tst = ["sheep", "man_on_horse", "rmdn"]
+        img = available_tst[0]
+        load_image = Image.open("./tmp/"+ img +".jpg")
         arr = np.expand_dims(np.array(load_image.resize((64,64)), dtype=np.uint8).transpose((2, 0, 1)), axis=0)
 
-        # img_arr = np.array(load_image.resize((64, 64)), dtype=np.uint8)
-        # img_arr = np.append(img_arr, np.zeros([img_arr.shape[0], img_arr.shape[1], 1]), axis=2)
-        # arr = np.expand_dims(img_arr.transpose((2, 0, 1)), axis=0)
+        if img in ["sheep", "man_on_horse"]:
+            vocab = json.load(open("./tmp/custom_data_info.json", 'r'))
+        else:
+            vocab = json.load(open("./tmp/rmdn_data_info.json", 'r'))
 
-        pred = json.load(open('./tmp/custom_prediction.json', 'r'))['0']
+        vocab['object_idx_to_name'] = vocab['ind_to_classes']
+        del vocab['ind_to_classes']
 
-        filtered_pairs = []
-        rel_labels = []
-        for i,pair in enumerate(pred['rel_pairs']) :
-            if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels'] and pred['rel_labels'][i] < 46:
-                filtered_pairs.append(pair)
-                rel_labels.append(pred['rel_labels'][i])
-        #filtered_pairs = [(pair[0], pred['rel_labels'][i], pair[1]) for i,pair in enumerate(pred['rel_pairs']) if pair[0] in pred['bbox_labels'] and pair[1] in pred['bbox_labels']]
-        objs = [item for pair in filtered_pairs[:4] for item in pair]
-        boxes = [pred['bbox'][pred['bbox_labels'].index(obj)] for obj in objs]
-        triples = [(objs.index(filtered_pairs[i][0]), rel_labels[i], objs.index(filtered_pairs[i][1])) for i in range(4)]
+        vocab['pred_idx_to_name'] = vocab['ind_to_predicates']
+        del vocab['ind_to_predicates']
 
-        #objs = pred['bbox_labels'][1:5]
-        #boxes = pred['bbox'][1:5]
-        #triples = [(pred['rel_pairs'][i][0], pred['rel_labels'][i], pred['rel_pairs'][i][1]) for i in range(4)]
+        if img == "sheep":
+            pred = json.load(open('./tmp/custom_prediction.json', 'r'))['0']
+        elif img == "man_on_horse":
+            pred = json.load(open('./tmp/custom_prediction.json', 'r'))['1']
+        elif img == "rmdn":
+            pred = json.load(open('./tmp/rmdn_prediction.json', 'r'))['0']
+
+        topk_objs = 8
+        topk_rels = 3
+        """
+        'rel_pair' contain a local indexer into the 'bbox_labels'
+        """
+
+        triples = [] # triplet containing (local obj label, predicate label, local subj label)
+        objs = pred["bbox_labels"][:topk_objs]
+        boxes = pred["bbox"][:topk_objs]
+        for i, pair in enumerate(pred['rel_pairs']):
+            obj = pair[0]
+            predicate = pred['rel_labels'][i]
+            subj = pair[1]
+            if obj < topk_objs and subj < topk_objs:  # only take relations between topk objects
+                triples.append([obj, predicate, subj])
+
+        triples = triples[:topk_rels]
 
         self.imgs = torch.tensor(arr).cpu()
         self.objs = torch.tensor(objs).cpu()
@@ -841,12 +853,8 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         boxes_ = {}
         triple_idx = 0
 
-        vocab = json.load(open("./tmp/custom_data_info.json", 'r'))
-        vocab['object_idx_to_name'] = vocab['ind_to_classes']
-        del vocab['ind_to_classes']
 
-        vocab['pred_idx_to_name'] = vocab['ind_to_predicates']
-        del vocab['ind_to_predicates']
+
 
 
         for i, [s, p, o] in enumerate(triples):
