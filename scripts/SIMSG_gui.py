@@ -61,7 +61,7 @@ mpl.rcParams['savefig.pad_inches'] = 0
 plt.margins(0.0)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--checkpoint', default='./experiments/vg/spade_64_vg_model.pt')
+parser.add_argument('--checkpoint', default='E:/Fcis/4th Year Fcis/Graduation Project/simsg/simsg/checkpoints/spade_64_vg_model.pt')
 parser.add_argument('--dataset', default='vg', choices=['clevr', 'vg'])
 parser.add_argument('--data_h5', default=None)
 parser.add_argument('--predgraphs', default=False, type=bool_flag)
@@ -76,12 +76,13 @@ parser.add_argument('--random_feats', default=False, type=bool_flag)
 
 args = parser.parse_args()
 args.mode = "eval"
+
 if args.dataset == "clevr":
     assert args.random_feats == False
     DATA_DIR = "./datasets/clevr/target/"
     args.data_image_dir = DATA_DIR
 else:
-    DATA_DIR = "./datasets/vg/"
+    DATA_DIR = "E:/Fcis/4th Year Fcis/Graduation Project/simsg/simsg/datasets/vg/"
     args.data_image_dir = os.path.join(DATA_DIR, 'images')
 
 if args.data_h5 is None:
@@ -363,7 +364,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             mapping = {self.selected_node: new_label + "." + idx_t}
 
             # update list of relationship triples with the change
-            self.triples[int(idx_t)][1] = vocab["pred_name_to_idx"][new_label]
+            self.triples[int(idx_t)][1] = vocab['pred_idx_to_name'].index(new_label)
             s = self.triples[int(idx_t)][0]
             self.keep_box_idx[s] = 0
             self.keep_image_idx[s] = 0
@@ -405,12 +406,12 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             # for clevr keep object size as it is
             # for vg let it adapt to the new object category
             # position remains the same in both cases
-            if args.dataset == "vg" and not eval_utils.is_background(vocab["object_name_to_idx"][new_label]):
+            if args.dataset == "vg" and not eval_utils.is_background(vocab["object_idx_to_name"].index(new_label)):
                 self.keep_box_idx[int(idx_t)] = 0
                 self.combine_gt_pred_box_idx[int(idx_t)] = 1
 
             # update the list of objects with the new object category
-            self.objs[int(idx_t)] = vocab["object_name_to_idx"][new_label]
+            self.objs[int(idx_t)] = vocab["object_idx_to_name"].index(new_label)
             self.new_objs = self.objs
 
             # update the networkx graph and the list fo triples with the new object category for visualization
@@ -479,16 +480,16 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         new_pred = self.comboBox_p2.currentText()
 
         if torch.cuda.is_available():
-            pred_id = torch.tensor(vocab["pred_name_to_idx"][new_pred]).cuda()
+            pred_id = torch.tensor(vocab['pred_idx_to_name'].index(new_pred)).cuda()
         else:
-            pred_id = torch.tensor(vocab["pred_name_to_idx"][new_pred])
+            pred_id = torch.tensor(vocab['pred_idx_to_name'].index(new_pred))
 
         new_node = self.comboBox_sub2.currentText()
 
         if torch.cuda.is_available():
-            new_node_idx = torch.tensor(vocab["object_name_to_idx"][new_node]).cuda()
+            new_node_idx = torch.tensor(vocab['object_idx_to_name'].index(new_node)).cuda()
         else:
-            new_node_idx = torch.tensor(vocab["object_name_to_idx"][new_node])
+            new_node_idx = torch.tensor(vocab['object_idx_to_name'].index(new_node))
 
         anchor_idx = int(anchor_idx)
         imgbox_idx = self.objs.shape[0] - 1
@@ -720,13 +721,13 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         available_tst = ["sheep", "man_on_horse", "rmdn"]
         img = available_tst[0]
-        load_image = Image.open("./tmp/"+ img +".jpg")
+        load_image = Image.open("E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/"+ img +".jpg")
         arr = np.expand_dims(np.array(load_image.resize((64,64)), dtype=np.uint8).transpose((2, 0, 1)), axis=0)
 
         if img in ["sheep", "man_on_horse"]:
-            vocab = json.load(open("./tmp/custom_data_info.json", 'r'))
+            vocab = json.load(open("E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/custom_data_info.json", 'r'))
         else:
-            vocab = json.load(open("./tmp/rmdn_data_info.json", 'r'))
+            vocab = json.load(open("E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/rmdn_data_info.json", 'r'))
 
         vocab['object_idx_to_name'] = vocab['ind_to_classes']
         del vocab['ind_to_classes']
@@ -734,12 +735,14 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         vocab['pred_idx_to_name'] = vocab['ind_to_predicates']
         del vocab['ind_to_predicates']
 
+        vocab['object_idx_to_name'][0] = 'background'
+
         if img == "sheep":
-            pred = json.load(open('./tmp/custom_prediction.json', 'r'))['0']
+            pred = json.load(open('E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/custom_prediction.json', 'r'))['0']
         elif img == "man_on_horse":
-            pred = json.load(open('./tmp/custom_prediction.json', 'r'))['1']
+            pred = json.load(open('E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/custom_prediction.json', 'r'))['1']
         elif img == "rmdn":
-            pred = json.load(open('./tmp/rmdn_prediction.json', 'r'))['0']
+            pred = json.load(open('E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/rmdn_prediction.json', 'r'))['0']
 
         topk_objs = 8
         topk_rels = 3

@@ -286,7 +286,7 @@ def parse_bool(pred_graphs, generative, use_gt_boxes, use_feats):
 
 def is_background(label_id):
 
-    if label_id in [169, 60, 61, 49, 141, 8, 11, 52, 66]:
+    if label_id == 0:
         return True
     else:
         return False
