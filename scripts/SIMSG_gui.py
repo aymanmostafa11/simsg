@@ -61,7 +61,7 @@ mpl.rcParams['savefig.pad_inches'] = 0
 plt.margins(0.0)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--checkpoint', default='E:/Fcis/4th Year Fcis/Graduation Project/simsg/simsg/checkpoints/spade_64_vg_model.pt')
+parser.add_argument('--checkpoint', default='./simsg/experiments/vg/spade_64_vg_model.pt')
 parser.add_argument('--dataset', default='vg', choices=['clevr', 'vg'])
 parser.add_argument('--data_h5', default=None)
 parser.add_argument('--predgraphs', default=False, type=bool_flag)
@@ -82,7 +82,7 @@ if args.dataset == "clevr":
     DATA_DIR = "./datasets/clevr/target/"
     args.data_image_dir = DATA_DIR
 else:
-    DATA_DIR = "E:/Fcis/4th Year Fcis/Graduation Project/simsg/simsg/datasets/vg/"
+    DATA_DIR = "./simsg/datasets/vg/"
     args.data_image_dir = os.path.join(DATA_DIR, 'images')
 
 if args.data_h5 is None:
@@ -497,7 +497,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
 
         new_objs = []
         # add new node in list of objects
-        for obj in self.objs[:-1]: # last element is the image node
+        for obj in self.objs[:-1]:  # last element is the image node
             new_objs.append(obj)
         new_objs.append(new_node_idx)
         new_objs.append(self.objs[-1])
@@ -515,24 +515,24 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         new_boxes.append(self.boxes[-1])
 
         # expand and update the keep arrays. Set box and feat to 0 for the new node
-        self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-        self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-        self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32).cuda()), 0)
-        self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32).cuda()), 0)
+        self.keep_feat_idx = torch.cat((self.keep_feat_idx, torch.tensor([[1]], dtype=torch.float32).cpu()), 0)
+        self.keep_box_idx = torch.cat((self.keep_box_idx, torch.tensor([[1]], dtype=torch.float32).cpu()), 0)
+        self.keep_image_idx = torch.cat((self.keep_image_idx, torch.tensor([[1]], dtype=torch.float32).cpu()), 0)
+        self.added_objs_idx = torch.cat((self.added_objs_idx, torch.tensor([[0]], dtype=torch.float32).cpu()), 0)
         self.combine_gt_pred_box_idx = torch.cat((self.combine_gt_pred_box_idx,
-                                                  torch.tensor([0], dtype=torch.int64).cuda()), 0)
+                                                  torch.tensor([0], dtype=torch.int64).cpu()), 0)
         self.keep_feat_idx[-2] = 0
         self.keep_box_idx[-2] = 0
         self.added_objs_idx[-2] = 1
 
         new_triples = []
         # copy already existing triples, with a bit of care for the image modes that have incremented idx
-        for [s,p,o] in self.triples:
+        for [s, p, o] in self.triples:
             if s == imgbox_idx:
                 s = newimgbox_idx
             if o == imgbox_idx:
                 o = newimgbox_idx
-            new_triples.append(torch.LongTensor([s,p,o]).cuda())
+            new_triples.append(torch.LongTensor([s, p, o]).cpu())
 
         new_pred_pos = len(new_triples)
 
@@ -542,14 +542,14 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         if is_subject:
             subject_tag = new_node_tag
             object_tag = anchor_tag
-            new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]).cuda())
+            new_triples.append(torch.LongTensor([imgbox_idx, pred_id, anchor_idx]).cpu())
         else:
             object_tag = new_node_tag
             subject_tag = anchor_tag
 
-            new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]).cuda())
+            new_triples.append(torch.LongTensor([anchor_idx, pred_id, imgbox_idx]).cpu())
 
-        new_triples.append(torch.LongTensor([imgbox_idx,0,newimgbox_idx]).cuda())
+        new_triples.append(torch.LongTensor([imgbox_idx, 0, newimgbox_idx]).cpu())
 
         self.new_triples = torch.stack(new_triples)
         self.triples = self.new_triples
@@ -713,22 +713,64 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             self.ima.setVisible(0)
             self.imLoadCounter += 1
 
+    def replace_objs_preds_not_in_vocab(self, triples=None):
+
+        triples_after_replacement = []
+        objs_not_in_vocab = ['__background__', 'airplane', 'desk', 'drawer', 'fork', 'fruit', 'guy', 'kid', 'laptop',
+                             'men', 'phone', 'racket', 'room', 'screen', 'skier', 'sneaker', 'toilet', 'tower', 'vase',
+                             'vegetable']
+        objs_not_in_vocab_replacement = ['background', 'plane', 'table', 'table', 'plate', 'banana', 'man', 'child',
+                                         'board', 'man', 'brick', 'ball', 'background', 'board', 'player', 'shoe',
+                                         'seat', "sign", "flower", "food"]
+
+        preds_not_in_vocab = ['__background__', 'across', 'between', 'flying in', 'from', 'growing on', 'hanging from',
+                              'lying on', 'mounted on', 'on back of', 'painted on', 'part of', 'playing', 'says', 'to',
+                              'using', 'walking in', 'watching']
+        preds_not_in_vocab_replacement = ['behind', "against", "next to", "above", "of", "on top of", "attached", "on",
+                                          "on top of", "on top of", "covering", "belonging to", "standing on", "by",
+                                          "next to", "has", "walking on", "looking at"]
+
+        for triple in triples:
+            s = triple[0]
+            p = triple[1]
+            o = triple[2]
+
+            if s in objs_not_in_vocab:
+                idx = objs_not_in_vocab.index(s)
+                s = objs_not_in_vocab_replacement[idx]
+
+            if o in objs_not_in_vocab:
+                idx = objs_not_in_vocab.index(o)
+                o = objs_not_in_vocab_replacement[idx]
+
+            if p in preds_not_in_vocab:
+                idx = preds_not_in_vocab.index(p)
+                p = preds_not_in_vocab_replacement[idx]
+
+            triples_after_replacement.append([s,p,o])
+
+        return triples_after_replacement
+
     def getfile(self):
         """
         Loads input data
         """
         global vocab
+        global causal_tde_vocab
 
         available_tst = ["sheep", "man_on_horse", "rmdn"]
         img = available_tst[0]
-        load_image = Image.open("E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/"+ img +".jpg")
+        load_image = Image.open("./simsg/tmp/"+ img +".jpg")
         arr = np.expand_dims(np.array(load_image.resize((64,64)), dtype=np.uint8).transpose((2, 0, 1)), axis=0)
 
         if img in ["sheep", "man_on_horse"]:
-            vocab = json.load(open("E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/custom_data_info.json", 'r'))
+            causal_tde_vocab = json.load(open("./simsg/tmp/custom_data_info.json", 'r'))
         else:
-            vocab = json.load(open("E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/rmdn_data_info.json", 'r'))
+            causal_tde_vocab = json.load(open("./simsg/tmp/rmdn_data_info.json", 'r'))
 
+
+       # TODO: REMOVE
+        vocab = causal_tde_vocab
         vocab['object_idx_to_name'] = vocab['ind_to_classes']
         del vocab['ind_to_classes']
 
@@ -738,11 +780,11 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         vocab['object_idx_to_name'][0] = 'background'
 
         if img == "sheep":
-            pred = json.load(open('E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/custom_prediction.json', 'r'))['0']
+            pred = json.load(open('./simsg/tmp/custom_prediction.json', 'r'))['0']
         elif img == "man_on_horse":
-            pred = json.load(open('E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/custom_prediction.json', 'r'))['1']
+            pred = json.load(open('.simsg/tmp/custom_prediction.json', 'r'))['1']
         elif img == "rmdn":
-            pred = json.load(open('E:/Fcis/4th Year Fcis/Graduation Project/simsg/tmp/rmdn_prediction.json', 'r'))['0']
+            pred = json.load(open('.simsg/tmp/rmdn_prediction.json', 'r'))['0']
 
         topk_objs = 8
         topk_rels = 3
@@ -783,7 +825,6 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         self.image = image
         self.imgs_in = torch.tensor(np.append(arr,np.zeros([1,1 , arr.shape[-1], arr.shape[-2]]), axis=1), dtype=torch.float).cpu()
         self.draw_input_image(new_image=True)
-
 
     def savefile(self):
         """
@@ -847,6 +888,8 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         """
         Prepares graphs in the right format for networkx
         """
+
+        triples = self.replace_objs_preds_not_in_vocab(triples)
         if self.new_objs is not None:
             objs = self.new_objs.cpu().numpy()
         else:
@@ -855,10 +898,6 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         boxes = self.boxes.cpu().numpy()
         boxes_ = {}
         triple_idx = 0
-
-
-
-
 
         for i, [s, p, o] in enumerate(triples):
             s2 = vocab['object_idx_to_name'][objs[s]] + "." + str(s)
