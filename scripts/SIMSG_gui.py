@@ -713,9 +713,8 @@ class ApplicationWindow(QtWidgets.QMainWindow):
             self.ima.setVisible(0)
             self.imLoadCounter += 1
 
-    def replace_objs_preds_not_in_vocab(self, triples=None):
+    def replace_classes_not_in_vg(self, causal_tde_vocab):
 
-        triples_after_replacement = []
         objs_not_in_vocab = ['__background__', 'airplane', 'desk', 'drawer', 'fork', 'fruit', 'guy', 'kid', 'laptop',
                              'men', 'phone', 'racket', 'room', 'screen', 'skier', 'sneaker', 'toilet', 'tower', 'vase',
                              'vegetable']
@@ -726,30 +725,37 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         preds_not_in_vocab = ['__background__', 'across', 'between', 'flying in', 'from', 'growing on', 'hanging from',
                               'lying on', 'mounted on', 'on back of', 'painted on', 'part of', 'playing', 'says', 'to',
                               'using', 'walking in', 'watching']
-        preds_not_in_vocab_replacement = ['behind', "against", "next to", "above", "of", "on top of", "attached", "on",
+        preds_not_in_vocab_replacement = ['behind', "against", "next to", "above", "of", "on top of", "attached to", "on",
                                           "on top of", "on top of", "covering", "belonging to", "standing on", "by",
                                           "next to", "has", "walking on", "looking at"]
 
-        for triple in triples:
-            s = triple[0]
-            p = triple[1]
-            o = triple[2]
+        for orig_obj, replacement in zip(objs_not_in_vocab, objs_not_in_vocab_replacement):
+            index = causal_tde_vocab['ind_to_classes'].index(orig_obj)
+            causal_tde_vocab['ind_to_classes'][index] = replacement
 
-            if s in objs_not_in_vocab:
-                idx = objs_not_in_vocab.index(s)
-                s = objs_not_in_vocab_replacement[idx]
+        for orig_pred, replacement in zip(preds_not_in_vocab, preds_not_in_vocab_replacement):
+            index = causal_tde_vocab['ind_to_predicates'].index(orig_pred)
+            causal_tde_vocab['ind_to_predicates'][index] = replacement
 
-            if o in objs_not_in_vocab:
-                idx = objs_not_in_vocab.index(o)
-                o = objs_not_in_vocab_replacement[idx]
+        return causal_tde_vocab
 
-            if p in preds_not_in_vocab:
-                idx = preds_not_in_vocab.index(p)
-                p = preds_not_in_vocab_replacement[idx]
+    def map_obj_to_vg(self, obj):
+        return vocab['object_name_to_idx'][causal_tde_vocab['ind_to_classes'][obj]]
 
-            triples_after_replacement.append([s,p,o])
+    def map_pred_to_vg(self, pred):
+        return vocab['pred_name_to_idx'][causal_tde_vocab['ind_to_predicates'][pred]]
 
-        return triples_after_replacement
+    def map_to_vg(self, pred):
+        """
+        maps the indices in "bbox labels" and "rel_labels" to their equivalent in vg vocab
+        """
+        for idx in range(len(pred['bbox_labels'])):
+            pred['bbox_labels'][idx] = self.map_obj_to_vg(pred['bbox_labels'][idx])
+
+        for idx in range(len(pred['rel_labels'])):
+            pred['rel_labels'][idx] = self.map_pred_to_vg(pred['rel_labels'][idx])
+
+        return pred
 
     def getfile(self):
         """
@@ -759,7 +765,7 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         global causal_tde_vocab
 
         available_tst = ["sheep", "man_on_horse", "rmdn"]
-        img = available_tst[0]
+        img = available_tst[1]
         load_image = Image.open("./simsg/tmp/"+ img +".jpg")
         arr = np.expand_dims(np.array(load_image.resize((64,64)), dtype=np.uint8).transpose((2, 0, 1)), axis=0)
 
@@ -768,26 +774,21 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         else:
             causal_tde_vocab = json.load(open("./simsg/tmp/rmdn_data_info.json", 'r'))
 
+        causal_tde_vocab = self.replace_classes_not_in_vg(causal_tde_vocab)
 
-       # TODO: REMOVE
-        vocab = causal_tde_vocab
-        vocab['object_idx_to_name'] = vocab['ind_to_classes']
-        del vocab['ind_to_classes']
-
-        vocab['pred_idx_to_name'] = vocab['ind_to_predicates']
-        del vocab['ind_to_predicates']
-
-        vocab['object_idx_to_name'][0] = 'background'
 
         if img == "sheep":
             pred = json.load(open('./simsg/tmp/custom_prediction.json', 'r'))['0']
         elif img == "man_on_horse":
-            pred = json.load(open('.simsg/tmp/custom_prediction.json', 'r'))['1']
+            pred = json.load(open('./simsg/tmp/custom_prediction.json', 'r'))['1']
         elif img == "rmdn":
-            pred = json.load(open('.simsg/tmp/rmdn_prediction.json', 'r'))['0']
+            pred = json.load(open('./simsg/tmp/rmdn_prediction.json', 'r'))['0']
+
+        pred = self.map_to_vg(pred)
 
         topk_objs = 8
         topk_rels = 3
+
         """
         'rel_pair' contain a local indexer into the 'bbox_labels'
         """
@@ -889,7 +890,6 @@ class ApplicationWindow(QtWidgets.QMainWindow):
         Prepares graphs in the right format for networkx
         """
 
-        triples = self.replace_objs_preds_not_in_vocab(triples)
         if self.new_objs is not None:
             objs = self.new_objs.cpu().numpy()
         else:
