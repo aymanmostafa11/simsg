@@ -321,8 +321,11 @@ def remove_node(node_id):
     model.generate_image()
     img = Image.fromarray(model.image, "RGB")
 
-    img.save('modified.jpeg')
 
+    # relative paths are not working for some reason, meh
+    img.save('D:/Study/GP/simsg/api_data/modified.jpeg')
+
+    return send_file('D:/Study/GP/simsg/api_data/modified.jpeg')
 
 if __name__ == '__main__':
     global model
