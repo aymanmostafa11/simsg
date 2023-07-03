@@ -267,35 +267,34 @@ class Model():
             self.boxes = self.added_objs_idx * layout_boxes.detach().clone() + (1 - self.added_objs_idx) * self.boxes
             self.added_objs_idx = torch.zeros_like(self.objs.unsqueeze(1), dtype=torch.float)
 
-    def remove_node(self, selected_node):
+
+    def remove_node(self, node_id):
         """
         Removes an object node and all its connections
         Used in the object removal mode
         """
-        if selected_node is not None:
+        idx = int(node_id)
+        # remove node and all connecting edges
+        self.new_objs, self.new_triples, self.boxes, self.imgs_in, self.obj_to_img, _ = \
+                    eval_utils.remove_node(self.objs, self.triples,
+                                           self.boxes, self.imgs_in, [idx],
+                                           torch.zeros_like(self.objs),
+                                           torch.zeros_like(self.triples))
 
-            idx = selected_node
-            # remove node and all connecting edges
-            self.new_objs, self.new_triples, self.boxes, self.imgs_in, self.obj_to_img, _ = \
-                        eval_utils.remove_node(self.objs, self.triples,
-                                               self.boxes, self.imgs_in, [idx],
-                                               torch.zeros_like(self.objs),
-                                               torch.zeros_like(self.triples))
+        # update keep arrays
+        idlist = list(range(self.objs.shape[0]))
+        keep_idx = [i for i in idlist if i != idx]
+        self.keep_box_idx = self.keep_box_idx[keep_idx]
+        self.keep_feat_idx = self.keep_feat_idx[keep_idx]
+        self.keep_image_idx = self.keep_image_idx[keep_idx]
+        self.added_objs_idx = self.added_objs_idx[keep_idx]
+        self.combine_gt_pred_box_idx = self.combine_gt_pred_box_idx[keep_idx]
 
-            # update keep arrays
-            idlist = list(range(self.objs.shape[0]))
-            keep_idx = [i for i in idlist if i != idx]
-            self.keep_box_idx = self.keep_box_idx[keep_idx]
-            self.keep_feat_idx = self.keep_feat_idx[keep_idx]
-            self.keep_image_idx = self.keep_image_idx[keep_idx]
-            self.added_objs_idx = self.added_objs_idx[keep_idx]
-            self.combine_gt_pred_box_idx = self.combine_gt_pred_box_idx[keep_idx]
+        self.objs = self.new_objs
+        self.triples = self.new_triples
 
-            self.objs = self.new_objs
-            self.triples = self.new_triples
-
-            # update the networkx graph for visualization
-            self.mode = "remove"
+        # update the networkx graph for visualization
+        self.mode = "remove"
 
 
 
@@ -313,6 +312,16 @@ def get_vg_data():
     archived = shutil.make_archive('vg_data', 'zip', 'api_data/vg/')
 
     return send_file(archived, mimetype='zip')
+
+@app.route('/remove_node/<node_id>')
+def remove_node(node_id):
+    img = Image.fromarray(model.image, "RGB")
+
+    model.remove_node(node_id)
+    model.generate_image()
+    img = Image.fromarray(model.image, "RGB")
+
+    img.save('modified.jpeg')
 
 
 if __name__ == '__main__':
